@@ -30,7 +30,83 @@ if os.path.exists(_font_path):
     LabelBase.register(name="Roboto", fn_regular=_font_path)
     LabelBase.register(name="NotoSansJP", fn_regular=_font_path)
 
+import json
+import base64
+import re
+
 import backend as bk
+
+
+def _analyze_image_with_claude(image_path: str, api_key: str) -> list:
+    """画像をClaude Vision APIで解析し、コース別データを返す（requestsで直接呼び出し）"""
+    with open(image_path, "rb") as f:
+        img_data = base64.standard_b64encode(f.read()).decode("utf-8")
+
+    ext = os.path.splitext(image_path)[1].lower()
+    media_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
+    media_type = media_map.get(ext, "image/jpeg")
+
+    prompt = (
+        "このボートレースの出走表画像から各艇のデータを読み取り、"
+        "JSON形式のみで返してください（説明・コードブロック不要）。\n"
+        '形式: [{"course":1,"regno":"1234","name":"選手名","de_ashi":3,"nobiashi":3},...]\n'
+        "- course: コース番号(1-6)  regno: 登録番号4桁\n"
+        "- de_ashi: モーター出足評価(1-5)  nobiashi: モーター伸び足評価(1-5)\n"
+        "全6コース分を必ず返してください。"
+    )
+
+    import requests as _req
+    resp = _req.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json={
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 1024,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": img_data,
+                        },
+                    },
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    text = resp.json()["content"][0]["text"].strip()
+    m = re.search(r"\[.*\]", text, re.DOTALL)
+    if m:
+        text = m.group(0)
+    return json.loads(text)
+
+
+def _load_api_key() -> str:
+    config_path = os.path.join(os.path.expanduser("~"), ".kyotei_config.json")
+    try:
+        with open(config_path, "r") as f:
+            return json.load(f).get("api_key", "")
+    except Exception:
+        return ""
+
+
+def _save_api_key(key: str):
+    config_path = os.path.join(os.path.expanduser("~"), ".kyotei_config.json")
+    try:
+        with open(config_path, "w") as f:
+            json.dump({"api_key": key}, f)
+    except Exception:
+        pass
 
 # ── カラー定数 ────────────────────────────────────────
 BG_DARK   = (0.035, 0.165, 0.29, 1)   # #091A49
@@ -319,6 +395,15 @@ class InputScreen(Screen):
         sv.add_widget(grid)
         root.add_widget(sv)
 
+        # 画像入力ボタン
+        self.img_btn = flat_btn(
+            "📷 画像から自動入力",
+            bg=(0.13, 0.42, 0.22, 1),
+            height=dp(44), font_size=sp(13),
+        )
+        self.img_btn.bind(on_press=self._on_image_fill)
+        root.add_widget(self.img_btn)
+
         # 実行ボタン
         self.run_btn = flat_btn(
             "スタート分析を実行",
@@ -360,6 +445,141 @@ class InputScreen(Screen):
         app.root.current = "progress"
         progress_screen = app.root.get_screen("progress")
         progress_screen.start_analysis(players_input, target)
+
+    def _on_image_fill(self, _):
+        api_key = _load_api_key()
+        if not api_key:
+            self._show_api_key_popup()
+        else:
+            self._pick_image(api_key)
+
+    def _show_api_key_popup(self):
+        content = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        content.add_widget(Label(
+            text="Claude APIキーを入力してください",
+            color=WHITE, font_size=sp(13),
+            size_hint_y=None, height=dp(36),
+        ))
+        key_input = TextInput(
+            multiline=False,
+            hint_text="sk-ant-...",
+            font_size=sp(12),
+            background_color=BG_CARD,
+            foreground_color=WHITE,
+            cursor_color=WHITE,
+            hint_text_color=(0.5, 0.6, 0.7, 1),
+            size_hint_y=None, height=dp(44),
+            padding=[dp(8), dp(10)],
+        )
+        content.add_widget(key_input)
+
+        popup = Popup(title="APIキー設定", content=content,
+                      size_hint=(0.92, 0.38))
+
+        btn_row = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(8))
+        cancel_btn = flat_btn("キャンセル", bg=ACCENT_D, height=dp(44))
+        ok_btn = flat_btn("保存して続行", height=dp(44))
+        btn_row.add_widget(cancel_btn)
+        btn_row.add_widget(ok_btn)
+        content.add_widget(btn_row)
+
+        cancel_btn.bind(on_press=lambda _: popup.dismiss())
+
+        def on_ok(_):
+            key = key_input.text.strip()
+            if key:
+                _save_api_key(key)
+                popup.dismiss()
+                self._pick_image(key)
+
+        ok_btn.bind(on_press=on_ok)
+        popup.open()
+
+    def _pick_image(self, api_key):
+        try:
+            from plyer import filechooser
+            filechooser.open_file(
+                on_selection=lambda sel: self._on_file_selected(sel, api_key),
+                filters=["*.png", "*.jpg", "*.jpeg"],
+                title="出走表の画像を選択",
+            )
+        except Exception as e:
+            Popup(
+                title="エラー",
+                content=Label(text=f"ファイル選択エラー:\n{e}", color=WHITE),
+                size_hint=(0.85, 0.3),
+            ).open()
+
+    def _on_file_selected(self, selection, api_key):
+        if not selection:
+            return
+        path = selection[0]
+        self.img_btn.disabled = True
+        self.img_btn.text = "解析中..."
+
+        def task():
+            try:
+                courses_data = _analyze_image_with_claude(path, api_key)
+                Clock.schedule_once(lambda dt: self._apply_image_data(courses_data))
+            except Exception as e:
+                err = str(e)
+                Clock.schedule_once(lambda dt: Popup(
+                    title="エラー",
+                    content=Label(text=err[:120], color=WHITE),
+                    size_hint=(0.9, 0.35),
+                ).open())
+            finally:
+                Clock.schedule_once(lambda dt: self._reset_img_btn())
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _reset_img_btn(self):
+        self.img_btn.disabled = False
+        self.img_btn.text = "📷 画像から自動入力"
+
+    def _apply_image_data(self, courses_data: list):
+        count = 0
+        for item in courses_data:
+            try:
+                course = int(item.get("course", 0))
+            except (TypeError, ValueError):
+                continue
+            if not (1 <= course <= 6):
+                continue
+            row = self._rows[course - 1]
+
+            regno = str(item.get("regno", "")).strip()
+            name = str(item.get("name", f"選手{regno}")).strip() or f"選手{regno}"
+            try:
+                de_ashi = max(1, min(5, int(item.get("de_ashi", 3))))
+            except (TypeError, ValueError):
+                de_ashi = 3
+            try:
+                nobiashi = max(1, min(5, int(item.get("nobiashi", 3))))
+            except (TypeError, ValueError):
+                nobiashi = 3
+
+            if regno:
+                row.query_input.text = regno
+                row._candidates = [{"regno": regno, "name": name}]
+                row.candidate_spinner.values = [f"{regno} {name}"]
+                row.candidate_spinner.text = f"{regno} {name}"
+                row.candidate_spinner.color = WHITE
+                row.regno = regno
+
+            row.de_ashi_sp.text = str(de_ashi)
+            row.nobiashi_sp.text = str(nobiashi)
+            count += 1
+
+        Popup(
+            title="自動入力完了",
+            content=Label(
+                text=f"{count}/6 コース分を自動入力しました\n内容を確認してください",
+                color=WHITE,
+            ),
+            size_hint=(0.85, 0.3),
+        ).open()
+
 
 # ── 進捗スクリーン ─────────────────────────────────────
 

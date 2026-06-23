@@ -9,7 +9,7 @@ source.exclude_dirs = tests, bin, venv
 
 version = 1.0
 
-requirements = python3,kivy,requests,beautifulsoup4,certifi,charset-normalizer,idna,urllib3,soupsieve
+requirements = python3,kivy,requests,beautifulsoup4,certifi,charset-normalizer,idna,urllib3,soupsieve,plyer
 
 orientation = portrait
 
