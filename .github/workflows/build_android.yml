@@ -19,9 +19,9 @@ jobs:
           path: |
             ~/.buildozer
             kyotei_android/.buildozer
-          key: buildozer-docker-v1-${{ runner.os }}-${{ hashFiles('kyotei_android/buildozer.spec') }}
+          key: buildozer-docker-v2-${{ runner.os }}-${{ hashFiles('kyotei_android/buildozer.spec') }}
           restore-keys: |
-            buildozer-docker-v1-${{ runner.os }}-
+            buildozer-docker-v2-${{ runner.os }}-
 
       - name: Build APK (kivy/buildozer Docker)
         run: |
