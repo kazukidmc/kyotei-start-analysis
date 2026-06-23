@@ -1,0 +1,8 @@
+﻿__pycache__/
+*.pyc
+*.pyo
+.buildozer/
+bin/
+*.xlsx
+*.log
+apk_qr.png
