@@ -4,7 +4,7 @@ package.name = kyoteistartanalysis
 package.domain = jp.kyotei
 
 source.dir = .
-source.include_exts = py,png,jpg,kv,atlas
+source.include_exts = py,png,jpg,kv,atlas,ttf
 source.exclude_dirs = tests, bin, venv
 
 version = 1.0

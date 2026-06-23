@@ -21,6 +21,15 @@ from kivy.clock import Clock
 from kivy.metrics import dp, sp
 from kivy.core.window import Window
 
+from kivy.core.text import LabelBase
+import os
+
+# Kivy デフォルトフォントを NotoSansJP に差し替え（全ウィジェット自動対応）
+_font_path = os.path.join(os.path.dirname(__file__), "NotoSansJP.ttf")
+if os.path.exists(_font_path):
+    LabelBase.register(name="Roboto", fn_regular=_font_path)
+    LabelBase.register(name="NotoSansJP", fn_regular=_font_path)
+
 import backend as bk
 
 # ── カラー定数 ────────────────────────────────────────
