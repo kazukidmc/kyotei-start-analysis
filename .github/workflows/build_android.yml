@@ -16,18 +16,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Cache Buildozer directory
+      - name: Cache Android SDK + Buildozer
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.buildozer
-            kyotei_android/.buildozer
-          key: buildozer-docker-v3-${{ runner.os }}-${{ hashFiles('kyotei_android/buildozer.spec') }}
+          path: ~/.buildozer
+          key: android-sdk-v1-${{ runner.os }}-${{ hashFiles('kyotei_android/buildozer.spec') }}
           restore-keys: |
-            buildozer-docker-v3-${{ runner.os }}-
+            android-sdk-v1-${{ runner.os }}-
 
       - name: Build APK (kivy/buildozer Docker)
         run: |
+          set -o pipefail
+          mkdir -p $HOME/.buildozer
           yes | docker run --rm -i \
             -v ${{ github.workspace }}/kyotei_android:/home/user/hostcwd \
             -v $HOME/.buildozer:/home/user/.buildozer \
