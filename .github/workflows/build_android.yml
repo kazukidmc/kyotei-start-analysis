@@ -38,8 +38,7 @@ jobs:
         run: |
           python3.12 -m pip install --upgrade pip
           # python-for-android 2024.01.21 は Python 3.12 対応
-          python3.12 -m pip install buildozer cython virtualenv \
-            "python-for-android==2024.01.21"
+          python3.12 -m pip install buildozer cython virtualenv
 
       - name: Cache Buildozer directory
         uses: actions/cache@v4
@@ -47,9 +46,9 @@ jobs:
           path: |
             ~/.buildozer
             kyotei_android/.buildozer
-          key: buildozer-py312-p4a202401-v1-${{ runner.os }}-${{ hashFiles('kyotei_android/buildozer.spec') }}
+          key: buildozer-py314-v1-${{ runner.os }}-${{ hashFiles('kyotei_android/buildozer.spec') }}
           restore-keys: |
-            buildozer-py312-p4a202401-v1-${{ runner.os }}-
+            buildozer-py314-v1-${{ runner.os }}-
 
       - name: Build APK
         working-directory: kyotei_android
