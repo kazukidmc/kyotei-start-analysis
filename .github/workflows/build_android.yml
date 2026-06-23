@@ -25,7 +25,7 @@ jobs:
 
       - name: Build APK (kivy/buildozer Docker)
         run: |
-          docker run --rm \
+          yes | docker run --rm -i \
             -v ${{ github.workspace }}/kyotei_android:/home/user/hostcwd \
             kivy/buildozer:latest \
             android debug 2>&1 | tee build.log
