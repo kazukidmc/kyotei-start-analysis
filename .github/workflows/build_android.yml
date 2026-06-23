@@ -13,48 +13,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Python 3.12 via deadsnakes PPA
-        run: |
-          sudo add-apt-repository ppa:deadsnakes/ppa -y
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            python3.12 python3.12-dev python3.12-venv \
-            python3-pip build-essential ccache git zip unzip \
-            autoconf libtool pkg-config cmake \
-            libffi-dev libssl-dev zlib1g-dev libltdl-dev libncurses5
-          # Python 3.12 をデフォルトに
-          sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 10
-          sudo update-alternatives --set python3 /usr/bin/python3.12
-          curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
-          python3.12 --version
-
-      - name: Install Buildozer and Cython
-        run: |
-          python3.12 -m pip install --upgrade pip
-          # python-for-android 2024.01.21 は Python 3.12 対応
-          python3.12 -m pip install buildozer cython virtualenv
-
       - name: Cache Buildozer directory
         uses: actions/cache@v4
         with:
           path: |
             ~/.buildozer
             kyotei_android/.buildozer
-          key: buildozer-py314-v1-${{ runner.os }}-${{ hashFiles('kyotei_android/buildozer.spec') }}
+          key: buildozer-docker-v1-${{ runner.os }}-${{ hashFiles('kyotei_android/buildozer.spec') }}
           restore-keys: |
-            buildozer-py314-v1-${{ runner.os }}-
+            buildozer-docker-v1-${{ runner.os }}-
 
-      - name: Build APK
-        working-directory: kyotei_android
+      - name: Build APK (kivy/buildozer Docker)
         run: |
-          yes | python3.12 -m buildozer android debug 2>&1 | tee build.log
-          echo "BUILD_LOG_END"
+          docker run --rm \
+            -v ${{ github.workspace }}/kyotei_android:/home/user/hostcwd \
+            kivy/buildozer:latest \
+            android debug 2>&1 | tee build.log
+          echo "BUILD_DONE"
 
       - name: Find APK
         id: apk
@@ -62,7 +37,7 @@ jobs:
           APK=$(find kyotei_android/bin -name "*.apk" 2>/dev/null | head -1)
           if [ -z "$APK" ]; then
             ls -la kyotei_android/bin/ 2>/dev/null || echo "bin/ not found"
-            grep -i "error\|failed\|exception" kyotei_android/build.log | tail -20 || true
+            grep -i "error\|failed\|exception" build.log | tail -30 || true
             exit 1
           fi
           echo "path=$APK" >> $GITHUB_OUTPUT
