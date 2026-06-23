@@ -26,14 +26,15 @@ jobs:
 
       - name: Build APK (kivy/buildozer Docker)
         run: |
-          set -o pipefail
           mkdir -p $HOME/.buildozer
-          yes | docker run --rm -i \
+          yes 2>/dev/null | docker run --rm -i \
             -v ${{ github.workspace }}/kyotei_android:/home/user/hostcwd \
             -v $HOME/.buildozer:/home/user/.buildozer \
             kivy/buildozer:latest \
             android debug 2>&1 | tee build.log
-          echo "BUILD_DONE"
+          DOCKER_EXIT=${PIPESTATUS[1]}
+          echo "Docker exit code: $DOCKER_EXIT"
+          exit $DOCKER_EXIT
 
       - name: Find APK
         id: apk
