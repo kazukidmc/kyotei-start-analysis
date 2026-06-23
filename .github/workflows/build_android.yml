@@ -13,26 +13,92 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build APK with Buildozer Docker
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
         with:
-          workdir: kyotei_android
-          buildozer_version: stable
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential \
+            ccache \
+            git \
+            zip \
+            unzip \
+            autoconf \
+            libtool \
+            pkg-config \
+            cmake \
+            libffi-dev \
+            libssl-dev \
+            zlib1g-dev \
+            libltdl-dev \
+            libncurses5
+
+      - name: Install Buildozer and Cython
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython virtualenv
+
+      - name: Cache Buildozer directory
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            kyotei_android/.buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('kyotei_android/buildozer.spec') }}-v2
+          restore-keys: |
+            buildozer-${{ runner.os }}-
+
+      - name: Build APK
+        working-directory: kyotei_android
+        run: |
+          yes | buildozer android debug 2>&1 | tee build.log
+          echo "BUILD_LOG_END"
+
+      - name: Find APK path
+        id: apk
+        run: |
+          APK=$(find kyotei_android/bin -name "*.apk" 2>/dev/null | head -1)
+          if [ -z "$APK" ]; then
+            echo "APK not found"
+            exit 1
+          fi
+          echo "path=$APK" >> $GITHUB_OUTPUT
+          echo "name=$(basename $APK)" >> $GITHUB_OUTPUT
+          echo "Found: $APK"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: kyotei-start-analysis-apk
-          path: ${{ steps.buildozer.outputs.filename }}
+          path: ${{ steps.apk.outputs.path }}
           retention-days: 30
 
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: "6艇スタート分析 v1.0.${{ github.run_number }}"
-          files: ${{ steps.buildozer.outputs.filename }}
+          body: |
+            ## 6艇スタート分析 Android版
+
+            ### インストール方法
+            1. このAPKファイルをスマホでダウンロード
+            2. Androidの設定で「提供元不明のアプリ」を許可
+            3. ダウンロードしたAPKをタップしてインストール
+
+            ### 注意
+            - Android 8.0 (API 26) 以上が必要です
+          files: ${{ steps.apk.outputs.path }}
           draft: false
           prerelease: false
         env:
