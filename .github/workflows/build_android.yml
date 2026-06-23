@@ -19,21 +19,25 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Install Python 3.12 and set as system default
+      - name: Set up Python 3.12 via deadsnakes PPA
         run: |
+          sudo add-apt-repository ppa:deadsnakes/ppa -y
           sudo apt-get update -qq
-          sudo apt-get install -y python3.12 python3.12-dev python3.12-venv python3-pip \
-            build-essential ccache git zip unzip autoconf libtool pkg-config cmake \
+          sudo apt-get install -y \
+            python3.12 python3.12-dev python3.12-venv \
+            python3-pip build-essential ccache git zip unzip \
+            autoconf libtool pkg-config cmake \
             libffi-dev libssl-dev zlib1g-dev libltdl-dev libncurses5
-          # Python 3.12 をシステムデフォルトに設定
+          # Python 3.12 をデフォルトに
           sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 10
           sudo update-alternatives --set python3 /usr/bin/python3.12
-          python3 --version
+          curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
+          python3.12 --version
 
       - name: Install Buildozer and Cython
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install buildozer cython virtualenv
+          python3.12 -m pip install --upgrade pip
+          python3.12 -m pip install buildozer cython virtualenv
 
       - name: Cache Buildozer directory
         uses: actions/cache@v4
@@ -41,25 +45,23 @@ jobs:
           path: |
             ~/.buildozer
             kyotei_android/.buildozer
-          key: buildozer-py312-${{ runner.os }}-${{ hashFiles('kyotei_android/buildozer.spec') }}
+          key: buildozer-py312-v2-${{ runner.os }}-${{ hashFiles('kyotei_android/buildozer.spec') }}
           restore-keys: |
-            buildozer-py312-${{ runner.os }}-
+            buildozer-py312-v2-${{ runner.os }}-
 
       - name: Build APK
         working-directory: kyotei_android
         run: |
-          yes | python3 -m buildozer android debug 2>&1 | tee build.log
+          yes | python3.12 -m buildozer android debug 2>&1 | tee build.log
           echo "BUILD_LOG_END"
-        env:
-          PYTHON: /usr/bin/python3.12
 
-      - name: Find APK path
+      - name: Find APK
         id: apk
         run: |
           APK=$(find kyotei_android/bin -name "*.apk" 2>/dev/null | head -1)
           if [ -z "$APK" ]; then
-            echo "APK not found - listing bin directory:"
-            ls -la kyotei_android/bin/ 2>/dev/null || echo "bin directory does not exist"
+            ls -la kyotei_android/bin/ 2>/dev/null || echo "bin/ not found"
+            grep -i "error\|failed\|exception" kyotei_android/build.log | tail -20 || true
             exit 1
           fi
           echo "path=$APK" >> $GITHUB_OUTPUT
@@ -81,14 +83,11 @@ jobs:
             ## 6艇スタート分析 Android版
 
             ### インストール方法
-            1. このAPKファイルをスマホでダウンロード
+            1. APKファイルをスマホでダウンロード
             2. Androidの設定で「提供元不明のアプリ」を許可
             3. ダウンロードしたAPKをタップしてインストール
 
-            ### 注意
-            - Android 8.0 (API 26) 以上が必要です
+            ※ Android 8.0 (API 26) 以上が必要です
           files: ${{ steps.apk.outputs.path }}
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
