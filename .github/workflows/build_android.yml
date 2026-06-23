@@ -19,34 +19,21 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install build dependencies
+      - name: Install Python 3.12 and set as system default
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y \
-            build-essential \
-            ccache \
-            git \
-            zip \
-            unzip \
-            autoconf \
-            libtool \
-            pkg-config \
-            cmake \
-            libffi-dev \
-            libssl-dev \
-            zlib1g-dev \
-            libltdl-dev \
-            libncurses5
+          sudo apt-get install -y python3.12 python3.12-dev python3.12-venv python3-pip \
+            build-essential ccache git zip unzip autoconf libtool pkg-config cmake \
+            libffi-dev libssl-dev zlib1g-dev libltdl-dev libncurses5
+          # Python 3.12 をシステムデフォルトに設定
+          sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 10
+          sudo update-alternatives --set python3 /usr/bin/python3.12
+          python3 --version
 
       - name: Install Buildozer and Cython
         run: |
-          pip install --upgrade pip
-          pip install buildozer cython virtualenv
+          python3 -m pip install --upgrade pip
+          python3 -m pip install buildozer cython virtualenv
 
       - name: Cache Buildozer directory
         uses: actions/cache@v4
@@ -54,26 +41,28 @@ jobs:
           path: |
             ~/.buildozer
             kyotei_android/.buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('kyotei_android/buildozer.spec') }}-v2
+          key: buildozer-py312-${{ runner.os }}-${{ hashFiles('kyotei_android/buildozer.spec') }}
           restore-keys: |
-            buildozer-${{ runner.os }}-
+            buildozer-py312-${{ runner.os }}-
 
       - name: Build APK
         working-directory: kyotei_android
         run: |
-          yes | buildozer android debug 2>&1 | tee build.log
+          yes | python3 -m buildozer android debug 2>&1 | tee build.log
           echo "BUILD_LOG_END"
+        env:
+          PYTHON: /usr/bin/python3.12
 
       - name: Find APK path
         id: apk
         run: |
           APK=$(find kyotei_android/bin -name "*.apk" 2>/dev/null | head -1)
           if [ -z "$APK" ]; then
-            echo "APK not found"
+            echo "APK not found - listing bin directory:"
+            ls -la kyotei_android/bin/ 2>/dev/null || echo "bin directory does not exist"
             exit 1
           fi
           echo "path=$APK" >> $GITHUB_OUTPUT
-          echo "name=$(basename $APK)" >> $GITHUB_OUTPUT
           echo "Found: $APK"
 
       - name: Upload APK artifact
