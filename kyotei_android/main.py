@@ -149,6 +149,67 @@ def _save_api_key(key: str):
     except Exception:
         pass
 
+
+def _excel_save_dir() -> str:
+    """
+    Excel保存先ディレクトリを返す。
+    Android: アプリ外部ファイルディレクトリ（権限不要・ファイルマネージャから参照可）。
+    その他: ホームディレクトリ。
+    """
+    try:
+        from jnius import autoclass
+        PythonActivity = autoclass("org.kivy.android.PythonActivity")
+        ctx = PythonActivity.mActivity
+        d = ctx.getExternalFilesDir(None)
+        if d is not None:
+            path = d.getAbsolutePath()
+            os.makedirs(path, exist_ok=True)
+            return path
+    except Exception:
+        pass
+    d = os.path.expanduser("~")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _generate_excel(players_data: list) -> str:
+    """PC版とまったく同じ .xlsx を生成し、保存パスを返す。"""
+    import excel_export as ex
+    from datetime import datetime
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = os.path.join(_excel_save_dir(), f"6艇スタート分析_{ts}.xlsx")
+    ex.write_analysis_excel(players_data, path)
+    return path
+
+
+def _share_file(path: str):
+    """Android の共有インテントで Excel ファイルを送信する。"""
+    from jnius import autoclass, cast
+    PythonActivity = autoclass("org.kivy.android.PythonActivity")
+    Intent = autoclass("android.content.Intent")
+    Uri = autoclass("android.net.Uri")
+    File = autoclass("java.io.File")
+    String = autoclass("java.lang.String")
+    try:
+        StrictMode = autoclass("android.os.StrictMode")
+        StrictMode.disableDeathOnFileUriExposure()
+    except Exception:
+        pass
+
+    activity = PythonActivity.mActivity
+    intent = Intent()
+    intent.setAction(Intent.ACTION_SEND)
+    intent.setType(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    uri = Uri.fromFile(File(path))
+    intent.putExtra(Intent.EXTRA_STREAM, cast("android.os.Parcelable", uri))
+    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    chooser = Intent.createChooser(
+        intent, cast("java.lang.CharSequence", String("Excelを共有")))
+    chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    activity.startActivity(chooser)
+
+
 # ── カラー定数 ────────────────────────────────────────
 BG_DARK   = (0.035, 0.165, 0.29, 1)   # #091A49
 BG_CARD   = (0.07, 0.22, 0.38, 1)
@@ -733,6 +794,18 @@ class ProgressScreen(Screen):
                 Clock.schedule_once(lambda dt, p=pct: setattr(self.pb, "value", p))
 
             self._log("✓ 分析完了！")
+
+            # PC版と同一の Excel ファイルを生成
+            self._excel_path = None
+            self._log("Excelファイル生成中...（少し時間がかかります）")
+            try:
+                self._excel_path = _generate_excel(self._players_data)
+                self._log(f"✓ Excel生成完了:\n{self._excel_path}")
+            except Exception as e:
+                import traceback
+                self._log(f"Excel生成エラー: {e}")
+                self._log(traceback.format_exc()[-400:])
+
             Clock.schedule_once(lambda dt: self._go_result())
         except Exception as e:
             import traceback
@@ -743,7 +816,8 @@ class ProgressScreen(Screen):
         boat_info = bk.collect_boat_info(self._players_data)
         app = App.get_running_app()
         result_screen = app.root.get_screen("result")
-        result_screen.load(self._players_data, boat_info)
+        result_screen.load(self._players_data, boat_info,
+                           excel_path=getattr(self, "_excel_path", None))
         app.root.current = "result"
 
 # ── 成形図ウィジェット ────────────────────────────────
@@ -870,12 +944,18 @@ class ResultScreen(Screen):
 
         root = BoxLayout(orientation="vertical", padding=dp(8), spacing=dp(6))
 
-        hdr = BoxLayout(size_hint_y=None, height=dp(44))
+        self._excel_path = None
+
+        hdr = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(6))
         back_btn = flat_btn("← 戻る", bg=ACCENT_D, size_hint=(None,1), width=dp(80))
         back_btn.bind(on_press=lambda _: setattr(App.get_running_app().root, "current", "input"))
         hdr.add_widget(back_btn)
         hdr.add_widget(Label(text="[b]分析結果[/b]", markup=True,
                               font_size=sp(16), color=WHITE))
+        self.excel_btn = flat_btn("📊 Excel", bg=GREEN, size_hint=(None,1),
+                                   width=dp(96), font_size=sp(13))
+        self.excel_btn.bind(on_press=self._on_share_excel)
+        hdr.add_widget(self.excel_btn)
         root.add_widget(hdr)
 
         # 成形図
@@ -901,7 +981,31 @@ class ResultScreen(Screen):
 
         self.add_widget(root)
 
-    def load(self, players_data, boat_info):
+    def _on_share_excel(self, _):
+        if not self._excel_path or not os.path.exists(self._excel_path):
+            Popup(
+                title="Excelなし",
+                content=Label(
+                    text="Excelファイルが生成されていません。\n"
+                         "（生成に失敗した可能性があります）",
+                    color=WHITE),
+                size_hint=(0.85, 0.3),
+            ).open()
+            return
+        try:
+            _share_file(self._excel_path)
+        except Exception as e:
+            Popup(
+                title="保存先",
+                content=Label(
+                    text=f"共有に失敗しました。\nファイルは以下に保存されています:\n\n"
+                         f"{self._excel_path}\n\n({e})",
+                    color=WHITE, font_size=sp(10)),
+                size_hint=(0.92, 0.4),
+            ).open()
+
+    def load(self, players_data, boat_info, excel_path=None):
+        self._excel_path = excel_path
         self.formation.set_data(boat_info)
         self._build_stats(boat_info)
 

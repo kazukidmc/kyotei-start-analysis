@@ -9,11 +9,11 @@ source.exclude_dirs = tests, bin, venv
 
 version = 1.0
 
-requirements = python3,kivy,requests,beautifulsoup4,certifi,charset-normalizer,idna,urllib3,soupsieve,plyer
+requirements = python3,kivy,requests,beautifulsoup4,certifi,charset-normalizer,idna,urllib3,soupsieve,plyer,openpyxl,et_xmlfile,matplotlib,numpy,kiwisolver,pillow
 
 orientation = portrait
 
-android.permissions = INTERNET, ACCESS_NETWORK_STATE
+android.permissions = INTERNET, ACCESS_NETWORK_STATE, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE
 android.api = 33
 android.minapi = 26
 android.ndk = 25b

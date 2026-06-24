@@ -202,7 +202,7 @@ def _parse_page(html: str, year: int) -> list:
                     "コース": course,
                     "スタートタイム": st_row[col].strip(),
                     "スタート順位": re.sub(r"[()（）\[\]]", "", rank_row[col]).strip(),
-                    "結果(着)": result_row[col].strip(),
+                    "結果": result_row[col].strip(),
                 })
     return races
 
@@ -280,7 +280,7 @@ def collect_boat_info(players_data: list) -> list:
         st1_count  = sum(1 for v in rank_vals if str(v).strip() == "1")
         st1_rate   = st1_count/len(subset) if subset else 0.0
 
-        result_vals = [r.get("結果(着)","") for r in subset]
+        result_vals = [r.get("結果","") for r in subset]
         win_count   = sum(1 for v in result_vals if str(v).strip() == "1")
         win_rate    = win_count/len(subset) if subset else 0.0
 
