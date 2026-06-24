@@ -453,6 +453,9 @@ class InputScreen(Screen):
         self.run_btn.bind(on_press=self._on_run)
         root.add_widget(self.run_btn)
 
+        # 下端スペーサー: 画面下からのスワイプで誤タップしないよう余白を確保
+        root.add_widget(Widget(size_hint_y=None, height=dp(48)))
+
         self.add_widget(root)
 
     def _on_run(self, _):
