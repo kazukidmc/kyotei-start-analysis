@@ -93,21 +93,117 @@ def _extract_name(soup, regno: str) -> str:
                 return name
     return f"選手{regno}"
 
+VENUE_NAMES = [
+    "住之江", "尼崎", "鳴門", "丸亀", "児島", "宮島", "徳山", "下関",
+    "若松", "芦屋", "福岡", "唐津", "大村", "浜名湖", "蒲郡", "常滑",
+    "津", "三国", "びわこ", "平和島", "多摩川", "江戸川", "戸田",
+    "桐生", "太田",
+]
+
+
+def _parse_date(cell_text: str, year: int) -> str:
+    trans = str.maketrans("０１２３４５６７８９", "0123456789")
+    t = cell_text.translate(trans)
+    m = re.search(r"(\d{1,2})月\s*(\d{1,2})日", t)
+    if m:
+        mo, da = int(m.group(1)), int(m.group(2))
+        return f"{year}/{mo:02d}/{da:02d}"
+    return cell_text.strip()
+
+
+def _extract_venue(p_text: str) -> str:
+    for v in VENUE_NAMES:
+        if v in p_text:
+            return v
+    m = re.search(r"ボートレース(.{2,4})", p_text)
+    return m.group(1) if m else ""
+
+
+def _extract_grade(p_text: str) -> str:
+    for g in ["SG", "G1", "G2", "G3"]:
+        if g in p_text:
+            return g
+    return "一般"
+
+
 def _parse_page(html: str, year: int) -> list:
+    """
+    艇国データバンクの年間成績ページ（tAllresults テーブル）をパースする。
+    各テーブルは日付が横方向に並ぶワイドレイアウト:
+      rows[0]=日付, rows[1]=レース番号, rows[2]=艇番/コース,
+      rows[3]=ST, rows[4]=ST順位, rows[5]=結果
+    各日付は2レース分（slot 0/1）の列に対応する。
+    """
     soup = BeautifulSoup(html, "html.parser")
     races = []
-    for row in soup.select("table tr"):
-        cells = [c.get_text(strip=True) for c in row.select("td")]
-        if len(cells) < 7:
+    for table in soup.find_all("table", class_="tAllresults"):
+        venue = ""
+        prev_p = table.find_previous_sibling("p")
+        if prev_p:
+            p_text = prev_p.get_text(strip=True)
+            venue = _extract_venue(p_text)
+
+        rows = table.find_all("tr")
+        if len(rows) < 6:
             continue
-        races.append({
-            "競艇場": cells[0],
-            "開催日時": f"{year}/{cells[1]}" if cells[1] else "",
-            "コース": cells[3],
-            "スタートタイム": cells[5],
-            "スタート順位": cells[6] if len(cells) > 6 else "",
-            "結果(着)": cells[7] if len(cells) > 7 else "",
-        })
+
+        def get_row_texts(r_idx):
+            cells = rows[r_idx].find_all(["td", "th"])
+            texts = [c.get_text(strip=True) for c in cells]
+            while len(texts) < 14:
+                texts.append("")
+            return texts[:14]
+
+        def get_boat_cells(r_idx):
+            cells = rows[r_idx].find_all(["td", "th"])
+            res = []
+            for c in cells:
+                boat = ""
+                for klass in c.get("class", []):
+                    mm = re.match(r"bgBoat(\d)", klass)
+                    if mm:
+                        boat = mm.group(1)
+                        break
+                res.append((boat, c.get_text(strip=True)))
+            while len(res) < 14:
+                res.append(("", ""))
+            return res[:14]
+
+        date_cells = rows[0].find_all(["td", "th"])
+        date_texts = [c.get_text(strip=True) for c in date_cells]
+        while len(date_texts) < 8:
+            date_texts.append("")
+
+        race_row    = get_row_texts(1)
+        boat_course = get_boat_cells(2)
+        st_row      = get_row_texts(3)
+        rank_row    = get_row_texts(4)
+        result_row  = get_row_texts(5)
+
+        for k in range(1, 8):
+            date_str = date_texts[k] if k < len(date_texts) else ""
+            if not date_str:
+                continue
+            date_fmt = _parse_date(date_str, year)
+            for slot in range(2):
+                col = (k - 1) * 2 + slot
+                if col >= 14:
+                    break
+                race_no_raw = race_row[col]
+                if not race_no_raw:
+                    continue
+                race_no = re.sub(r"[^\d]", "", race_no_raw)
+                boat_no, course = boat_course[col]
+                races.append({
+                    "競艇場": venue,
+                    "開催日時": date_fmt,
+                    "開催レース": f"{race_no}R" if race_no else race_no_raw,
+                    "艇番": boat_no,
+                    "コース": course,
+                    "スタートタイム": st_row[col].strip(),
+                    "スタート順位": re.sub(r"[()（）\[\]]", "", rank_row[col]).strip(),
+                    "結果(着)": result_row[col].strip(),
+                })
     return races
 
 def collect_recent_races(regno: str, target: int, course: int, log_cb, progress_cb):
