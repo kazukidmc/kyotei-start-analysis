@@ -182,6 +182,56 @@ def _generate_excel(players_data: list) -> str:
     return path
 
 
+def _save_to_downloads(src_path: str) -> str:
+    """
+    Excel を端末の「Download」フォルダに保存する。
+    Android 10+ (API29+) は MediaStore 経由、それ未満は直接コピー。
+    戻り値: 保存先の表示用パス。
+    """
+    from jnius import autoclass
+    PythonActivity = autoclass("org.kivy.android.PythonActivity")
+    VERSION = autoclass("android.os.Build$VERSION")
+    filename = os.path.basename(src_path)
+    mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    if VERSION.SDK_INT >= 29:
+        ContentValues = autoclass("android.content.ContentValues")
+        MediaStoreDownloads = autoclass("android.provider.MediaStore$Downloads")
+        activity = PythonActivity.mActivity
+        resolver = activity.getContentResolver()
+        values = ContentValues()
+        values.put("_display_name", filename)
+        values.put("mime_type", mime)
+        values.put("relative_path", "Download")
+        uri = resolver.insert(MediaStoreDownloads.EXTERNAL_CONTENT_URI, values)
+        if uri is None:
+            raise RuntimeError("MediaStore への登録に失敗しました")
+        out = resolver.openOutputStream(uri)
+        try:
+            with open(src_path, "rb") as f:
+                while True:
+                    chunk = f.read(8192)
+                    if not chunk:
+                        break
+                    out.write(chunk, 0, len(chunk))
+        finally:
+            out.close()
+        return "内部ストレージ/Download/" + filename
+
+    # API < 29: 直接コピー（要 WRITE_EXTERNAL_STORAGE）
+    import shutil
+    try:
+        from android.storage import primary_external_storage_path
+        base = primary_external_storage_path()
+    except Exception:
+        base = "/sdcard"
+    dl = os.path.join(base, "Download")
+    os.makedirs(dl, exist_ok=True)
+    dst = os.path.join(dl, filename)
+    shutil.copyfile(src_path, dst)
+    return dst
+
+
 def _share_file(path: str):
     """Android の共有インテントで Excel ファイルを送信する。"""
     from jnius import autoclass, cast
@@ -952,10 +1002,14 @@ class ResultScreen(Screen):
         hdr.add_widget(back_btn)
         hdr.add_widget(Label(text="[b]分析結果[/b]", markup=True,
                               font_size=sp(16), color=WHITE))
-        self.excel_btn = flat_btn("📊 Excel", bg=GREEN, size_hint=(None,1),
-                                   width=dp(96), font_size=sp(13))
-        self.excel_btn.bind(on_press=self._on_share_excel)
+        self.excel_btn = flat_btn("💾 保存", bg=GREEN, size_hint=(None,1),
+                                   width=dp(80), font_size=sp(13))
+        self.excel_btn.bind(on_press=self._on_save_excel)
         hdr.add_widget(self.excel_btn)
+        self.share_btn = flat_btn("📤", bg=ACCENT, size_hint=(None,1),
+                                   width=dp(52), font_size=sp(15))
+        self.share_btn.bind(on_press=self._on_share_excel)
+        hdr.add_widget(self.share_btn)
         root.add_widget(hdr)
 
         # 成形図
@@ -981,16 +1035,44 @@ class ResultScreen(Screen):
 
         self.add_widget(root)
 
+    def _excel_missing_popup(self):
+        Popup(
+            title="Excelなし",
+            content=Label(
+                text="Excelファイルが生成されていません。\n"
+                     "（生成に失敗した可能性があります）",
+                color=WHITE),
+            size_hint=(0.85, 0.3),
+        ).open()
+
+    def _on_save_excel(self, _):
+        if not self._excel_path or not os.path.exists(self._excel_path):
+            self._excel_missing_popup()
+            return
+        try:
+            loc = _save_to_downloads(self._excel_path)
+            Popup(
+                title="保存完了",
+                content=Label(
+                    text=f"Excelを保存しました:\n\n{loc}\n\n"
+                         "ファイルアプリのDownloadから開けます。",
+                    color=WHITE, font_size=sp(11)),
+                size_hint=(0.9, 0.35),
+            ).open()
+        except Exception as e:
+            Popup(
+                title="保存失敗",
+                content=Label(
+                    text=f"Downloadへの保存に失敗しました。\n\n"
+                         f"アプリ内に保存済み:\n{self._excel_path}\n\n"
+                         f"右の📤ボタンで共有もできます。\n({e})",
+                    color=WHITE, font_size=sp(10)),
+                size_hint=(0.92, 0.45),
+            ).open()
+
     def _on_share_excel(self, _):
         if not self._excel_path or not os.path.exists(self._excel_path):
-            Popup(
-                title="Excelなし",
-                content=Label(
-                    text="Excelファイルが生成されていません。\n"
-                         "（生成に失敗した可能性があります）",
-                    color=WHITE),
-                size_hint=(0.85, 0.3),
-            ).open()
+            self._excel_missing_popup()
             return
         try:
             _share_file(self._excel_path)
@@ -1069,6 +1151,16 @@ class ResultScreen(Screen):
 class KyoteiApp(App):
     def build(self):
         Window.clearcolor = BG_DARK
+
+        # ストレージ書き込み権限（Android 9以下の Download 保存用）
+        try:
+            from android.permissions import request_permissions, Permission
+            request_permissions([
+                Permission.WRITE_EXTERNAL_STORAGE,
+                Permission.READ_EXTERNAL_STORAGE,
+            ])
+        except Exception:
+            pass
 
         sm = ScreenManager(transition=SlideTransition())
         sm.add_widget(InputScreen(name="input"))
