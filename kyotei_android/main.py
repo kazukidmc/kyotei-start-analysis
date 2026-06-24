@@ -37,6 +37,47 @@ import re
 import backend as bk
 
 
+def _resolve_path(path) -> str:
+    """
+    plyer が返すパスを実際に open() できるファイルパスに変換する。
+    Android の content:// URI は jnius 経由で一時ファイルに書き出す。
+    """
+    if path is None:
+        raise ValueError("ファイルパスが取得できませんでした")
+
+    path = str(path)
+
+    if not path.startswith("content://"):
+        return path
+
+    # Android content:// URI → 一時ファイル
+    import tempfile
+    try:
+        from jnius import autoclass
+        PythonActivity = autoclass("org.kivy.android.PythonActivity")
+        Uri = autoclass("android.net.Uri")
+
+        ctx = PythonActivity.mActivity
+        uri = Uri.parse(path)
+        cr = ctx.getContentResolver()
+
+        mime = cr.getType(uri) or "image/jpeg"
+        ext = ".png" if "png" in mime else ".jpg"
+
+        tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+        stream = cr.openInputStream(uri)
+        buf = bytearray(8192)
+        n = stream.read(buf)
+        while n != -1:
+            tmp.write(bytes(buf[:n]))
+            n = stream.read(buf)
+        tmp.close()
+        stream.close()
+        return tmp.name
+    except Exception as e:
+        raise ValueError(f"content URI の読み込みに失敗しました: {e}")
+
+
 def _analyze_image_with_claude(image_path: str, api_key: str) -> list:
     """画像をClaude Vision APIで解析し、コース別データを返す（requestsで直接呼び出し）"""
     with open(image_path, "rb") as f:
@@ -513,7 +554,16 @@ class InputScreen(Screen):
     def _on_file_selected(self, selection, api_key):
         if not selection:
             return
-        path = selection[0]
+        raw = selection[0] if selection else None
+        try:
+            path = _resolve_path(raw)
+        except Exception as e:
+            Popup(
+                title="エラー",
+                content=Label(text=str(e), color=WHITE),
+                size_hint=(0.9, 0.35),
+            ).open()
+            return
         self.img_btn.disabled = True
         self.img_btn.text = "解析中..."
 
