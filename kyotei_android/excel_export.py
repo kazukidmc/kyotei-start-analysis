@@ -210,7 +210,7 @@ def _render_formation_png(players_data, show_start_line, show_labels,
 
 # ── Pillow描画: 分析グラフ（ヒストグラム＋ST順位）────────
 def _draw_hist_cell(d, ox, oy, w, h, st_vals, title, color):
-    pad_l, pad_r, pad_t, pad_b = 50, 12, 34, 46
+    pad_l, pad_r, pad_t, pad_b = 54, 14, 42, 56
     px0, py0 = ox + pad_l, oy + pad_t
     px1, py1 = ox + w - pad_r, oy + h - pad_b
     d.rectangle([px0, py0, px1, py1], fill=(248, 249, 250))
@@ -235,29 +235,29 @@ def _draw_hist_cell(d, ox, oy, w, h, st_vals, title, color):
     for i, c in enumerate(counts):
         if c <= 0:
             continue
-        bh = (c / maxc) * (py1 - py0 - 14)
+        bh = (c / maxc) * (py1 - py0 - 18)
         x0 = px0 + i * bw + 1
         x1 = px0 + (i + 1) * bw - 1
         d.rectangle([x0, py1 - bh, x1, py1], fill=color)
         d.text(((x0 + x1) / 2, py1 - bh - 2), str(c),
-               font=_font(8), fill=(60, 60, 60), anchor="mb")
+               font=_font(12), fill=(50, 50, 50), anchor="mb")
 
     labels = ["F/S"] + [f".{i:02d}" if i % 5 == 0 else "" for i in range(steps)]
     for i, lab in enumerate(labels):
         if lab:
-            d.text((px0 + (i + 0.5) * bw, py1 + 3), lab,
-                   font=_font(9), fill=(80, 80, 80), anchor="ma")
+            d.text((px0 + (i + 0.5) * bw, py1 + 4), lab,
+                   font=_font(13), fill=(60, 60, 60), anchor="ma")
 
-    d.text((ox + w / 2, oy + 4), title, font=_font(13),
+    d.text((ox + w / 2, oy + 4), title, font=_font(17),
            fill=(31, 78, 121), anchor="ma")
     mean = (sum(valid) / len(valid)) if valid else None
     xl = f"STタイム (n={len(st_vals)}" + (f", 平均={mean:.3f}" if mean else "") + ")"
-    d.text((ox + w / 2, py1 + 22), xl, font=_font(10),
-           fill=(80, 80, 80), anchor="ma")
+    d.text((ox + w / 2, py1 + 28), xl, font=_font(14),
+           fill=(60, 60, 60), anchor="ma")
 
 
 def _draw_rank_cell(d, ox, oy, w, h, subset, title, color):
-    pad_l, pad_r, pad_t, pad_b = 50, 12, 34, 46
+    pad_l, pad_r, pad_t, pad_b = 54, 14, 42, 56
     px0, py0 = ox + pad_l, oy + pad_t
     px1, py1 = ox + w - pad_r, oy + h - pad_b
     d.rectangle([px0, py0, px1, py1], fill=(248, 249, 250))
@@ -285,37 +285,37 @@ def _draw_rank_cell(d, ox, oy, w, h, subset, title, color):
         nrec = rank_data[rk]["n"]
         x0 = px0 + i * bw + 4
         x1 = px0 + (i + 1) * bw - 4
-        bh = (nrec / maxc) * (py1 - py0 - 16) if nrec else 0
+        bh = (nrec / maxc) * (py1 - py0 - 18) if nrec else 0
         d.rectangle([x0, py1 - bh, x1, py1], fill=color)
         d.text(((x0 + x1) / 2, py1 - bh - 2), str(nrec),
-               font=_font(10), fill=(60, 60, 60), anchor="mb")
+               font=_font(13), fill=(50, 50, 50), anchor="mb")
         if nrec and bh >= (py1 - py0) * 0.22:
             win_r = rank_data[rk]["win"] / nrec * 100
             top3_r = rank_data[rk]["top3"] / nrec * 100
             cy = py1 - bh / 2
-            d.text(((x0 + x1) / 2, cy - 7), f"勝率{win_r:.0f}%",
-                   font=_font(10), fill=txt_col, anchor="mm")
-            d.text(((x0 + x1) / 2, cy + 7), f"3連{top3_r:.0f}%",
-                   font=_font(10), fill=txt_col, anchor="mm")
+            d.text(((x0 + x1) / 2, cy - 10), f"勝率{win_r:.0f}%",
+                   font=_font(14), fill=txt_col, anchor="mm")
+            d.text(((x0 + x1) / 2, cy + 10), f"3連{top3_r:.0f}%",
+                   font=_font(14), fill=txt_col, anchor="mm")
         # x軸ラベル（ST順位）
-        d.text(((x0 + x1) / 2, py1 + 3), str(rk),
-               font=_font(10), fill=(80, 80, 80), anchor="ma")
+        d.text(((x0 + x1) / 2, py1 + 4), str(rk),
+               font=_font(14), fill=(60, 60, 60), anchor="ma")
 
-    d.text((ox + w / 2, oy + 4), title, font=_font(13),
+    d.text((ox + w / 2, oy + 4), title, font=_font(17),
            fill=(31, 78, 121), anchor="ma")
-    d.text((ox + w / 2, py1 + 22), f"ST順位 (n={sum(counts)})",
-           font=_font(10), fill=(80, 80, 80), anchor="ma")
+    d.text((ox + w / 2, py1 + 28), f"ST順位 (n={sum(counts)})",
+           font=_font(14), fill=(60, 60, 60), anchor="ma")
 
 
 def _render_comparison_png(players_data) -> bytes:
-    CELL_W, CELL_H = 560, 340
-    TITLE_H = 44
+    CELL_W, CELL_H = 600, 380
+    TITLE_H = 52
     W = CELL_W * 2
     H = TITLE_H + CELL_H * 6
     img = Image.new("RGB", (W, H), (255, 255, 255))
     d = ImageDraw.Draw(img)
-    d.text((W / 2, 10), "6艇 スタート分析グラフ（コース別）",
-           font=_font(20), fill=(31, 78, 121), anchor="ma")
+    d.text((W / 2, 12), "6艇 スタート分析グラフ（コース別）",
+           font=_font(26), fill=(31, 78, 121), anchor="ma")
 
     for row, pd in enumerate(players_data):
         course = pd["course"]
